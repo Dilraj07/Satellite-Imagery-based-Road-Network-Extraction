@@ -1,52 +1,31 @@
-# MEMORY BOX: AI-Based Road Extraction & Live Geospatial Tracking
+# MEMORY BOX: AI Based Road Extraction and Topological Connectivity
 
-**Last Updated:** February 26, 2026
+**Last Updated:** March 2, 2026
 
-## 🧠 What is this file?
+## What is this file?
 
 This file serves as the core persistent memory for the AI assistant across sessions. **Whenever you restart work on this project, reading this file is your absolute first priority.**
 
-## 🎯 Project Vision
+## Project Vision Phase 2 (March 2026 Pivot)
 
-## 🎯 Project Vision (Patent & SOTA Paper Focused)
+To invent and build a Q1 publishable, ultra lightweight deep learning model capable of extracting continuous, unbroken unpaved road networks from high resolution satellite imagery in rural India. The core novelty lies in overcoming severe "Domain Shift" utilizing a computationally efficient backbone combined with a graph theoretic topological loss function.
 
-To invent and build a comprehensive **Real-Time Spatial Computing Engine** that dynamically fuses **Static AI-extracted infrastructure (Topology-Aware Road Networks)** with **Dynamic Live Tracking data (Satellites, Flights, Earthquakes, CCTV)**. The patentable novelty resides in generating a real-time interaction matrix between autonomous, deep-learning-generated ground topologies and multi-altitude, real-time spatial events.
+## Core Conceptual Breakthrough (The "Doable" Q1 Focus)
 
-## 📄 Core Context & Inputs
+- Instead of competing with Google on global mapping or inventing completely unattainable vector math loss formulas from scratch, the project shifted to an applied engineering approach.
+- **The SOTA Combination:** We are the first to combine **MobileViT V2** (for a fast, attention guided lightweight global receptive field) with the **clDice** loss function (Centerline preserve Dice Loss) to force topological connections over broken rural dirt roads.
+- **The Dataset:** Indian Rural Satellite Imagery cross referenced with OpenStreetMap (weakly supervised) to avoid the annotation bottleneck.
+- **The Evaluation:** Moving beyond standard pixel intersection over union (IoU) towards graph based metrics like **APLS** (Average Path Length Similarity) to prove continuous infrastructure.
 
-1. **Research Plan (Google Gemini.pdf):**
-   - **Domain 1:** Pixel-Level Segmentation Architectures (U-Net, ResUNet, D-LinkNet, Transformers).
-   - **Domain 2:** Topology-Aware and Graph-Based Models (GNNs, RoadTracer, Sat2Graph).
-   - **Domain 3:** Datasets & Evaluation (SpaceNet, DeepGlobe, APLS metrics, Occlusion handling).
-   - _Goal of Research:_ Accurately identify and extract road networks from high-res satellite imagery to form the static baseline topology.
+## Current Status
 
-2. **Geospatial & 3D Mapping Backbone:**
-   - **Google's Photorealistic 3D Tiles API:** For immersive 3D terrain and environment rendering.
-   - **OpenStreetMap (OSM) API:** For base map data, routing, and ground-truth comparison.
+- **Phase:** Q1 Research Paper Architecting and Proposal Generation.
+- **Completed:** Analyzed multiple 2024 to 2025 academic papers to establish the foundational baseline. Successfully defined the complete structural methodology (MobileViT V2 plus clDice). Authored and compiled `Project_Proposal_Rural_Roads.pdf`.
+- **Next Immediate Action:** Begin setting up the PyTorch repository to implement MobileViT and copy over the open source clDice Github implementation to begin initial training trials.
 
-3. **Live Tracking & Data APIs (Dynamic Layers):**
-   - **NORAD Satellite Data (Space-Track API):** Active satellite NORAD tracking and TLE data.
-   - **OpenSky Network / ADS-B Exchange APIs:** Real-time commercial and military flight tracking.
-   - **USGS Earthquake API:** Global live seismic activity.
-   - **Austin Open Data:** Live CCTV Feed integrations.
+## Rules for Future Conversations
 
-## 🏗️ Current System Architecture Concept
-
-The platform will act as a unified dashboard blending static and dynamic data layers:
-
-- **Base Layer:** Google Photorealistic 3D Tiles / OSM Maps.
-- **Infrastructure Layer:** Vector overlays containing the AI-extracted road networks (output from models like D-LinkNet or Sat2Graph).
-- **Live Event Layers:** Points, lines, and heatmaps visualizing flights, satellites, and earthquakes updated in near real-time via websockets or polling mechanisms.
-
-## 🛑 Current Status
-
-- **Phase:** Robust SOTA Planning & Paper Ideation.
-- **Completed:** Analyzed the research PDF, drafted the Study Checklist and `SOTA_Paper_Plan.md` containing the scoring metrics.
-- **Next Immediate Action:** Finalize the architectural diagrams and await Docker installation so we can run AI-Researcher-AV1 for novel algorithm generation.
-
-## 📝 Rules for Future Conversations
-
-1. Always check this file first.
-2. Update the "Current Status" and "Next Immediate Action" sections whenever a goal is accomplished or the project pivots.
-3. Ensure no API keys are ever hardcoded in the application (use `.env`).
-4. Keep the platform highly performant (handle dense geospatial data efficiently).
+1.  Always check this file first.
+2.  Maintain the strictly "doable" pipeline (do not invent new math from scratch; assemble existing open source state of the art blocks in a novel way).
+3.  Avoid using hyphens in documentation or file generations as per user request.
+4.  Focus on lightweight processing and rural Indian datasets.

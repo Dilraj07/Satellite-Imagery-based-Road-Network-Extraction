@@ -1,0 +1,19 @@
+# PyTorch Framework
+torch
+torchvision
+
+# Data & Image Processing
+numpy
+opencv-python
+Pillow
+
+# Machine Learning & Metrics
+scikit-learn
+scipy
+networkx
+
+# Utilities
+tqdm
+matplotlib
+jupyter
+wandb
