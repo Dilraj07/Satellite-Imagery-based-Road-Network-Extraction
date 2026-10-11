@@ -94,7 +94,19 @@ Training and accuracy evaluation need the DeepGlobe dataset and a GPU, so they r
 3. GPU T4, Internet on, Run All. Check for `SPLIT VERIFIED`.
 4. Download `paper_results.zip`; it contains `results.json`, per tile metrics, figures, and the ONNX export.
 
-**3. Paper figures that run locally**
+**3. Comparison experiments** (baselines, ablations, second dataset)
+
+| Notebook | What it does |
+|---|---|
+| `notebooks/train_compare.ipynb` | Trains one model on the same split with the v4 training code. Set `EXPERIMENT` to a baseline (`dlinknet34`, `unet`, `lraspp_mbv3`) or an ablation (`abl_full`, `abl_no_cldice`, `abl_no_gates`, `abl_no_strip_shift`, `abl_no_transformer`). Resumable like `train_v4`. |
+| `notebooks/evaluate_compare.ipynb` | Scores every trained model on the 623 test tiles with the paper's metrics. It re-measures v4 first and stops if the paper's numbers are not reproduced. |
+| `notebooks/massachusetts.ipynb` | Runs v4 on the Massachusetts Roads test tiles without retraining, then trains and tests on the official Massachusetts split. |
+
+The code is in `scripts/experiments/` (`exp_data.py`: split and metrics; `exp_torch.py`: experiments,
+training loop, prediction). `python -m pytest scripts/experiments -q` checks that the metrics match
+the paper's evaluation script.
+
+**4. Paper figures that run locally**
 
 ```bash
 make figures      # architecture diagrams, prediction grid, postprocessing stages, graph analysis, training curve
@@ -124,11 +136,15 @@ The notebooks are generated from Python sources; after editing those, run `make 
 ├── notebooks/
 │   ├── train_v4.ipynb                  Kaggle training notebook (v4)
 │   ├── evaluate_for_paper.ipynb        Kaggle evaluation notebook (verified split)
+│   ├── train_compare.ipynb             train a baseline or ablation on the same split
+│   ├── evaluate_compare.ipynb          score the comparison models on the 623 test tiles
+│   ├── massachusetts.ipynb             second dataset (Massachusetts Roads)
 │   └── archive/                        earlier training notebooks (v2, v3)
 ├── scripts/
 │   ├── predict_onnx.py                 ONNX Runtime inference
 │   ├── predict_single_image.py         PyTorch inference
 │   ├── build_train_v4_notebook.py      source of notebooks/train_v4.ipynb
+│   ├── experiments/                    baselines, ablations, Massachusetts (code and notebook builder)
 │   ├── paper_figures/                  figure scripts and the evaluation notebook source
 │   ├── report/                         project report builders
 │   └── presentation/                   slide deck builder

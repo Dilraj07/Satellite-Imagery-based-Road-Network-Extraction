@@ -16,7 +16,7 @@ api:                ## FastAPI endpoint
 	uvicorn backend.api:app --reload
 
 test:
-	python -m pytest backend/tests -q
+	python -m pytest backend/tests scripts/experiments -q
 
 figures:            ## regenerate the paper figures that run locally
 	python scripts/paper_figures/architecture_diagrams.py
@@ -29,6 +29,7 @@ figures:            ## regenerate the paper figures that run locally
 notebooks:          ## rebuild the Kaggle notebooks from their source scripts
 	python scripts/build_train_v4_notebook.py
 	python scripts/paper_figures/build_eval_notebook.py
+	python scripts/experiments/build_notebooks.py
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} +

@@ -101,8 +101,12 @@ class RoadExtractionLoss(nn.Module):
         pos_weight: float = 2.0,
         decay_power: float = 0.5,
         alpha_decay_epochs: int | None = None,
+        use_cldice: bool = True,
     ):
         super().__init__()
+        # use_cldice=False is the "no clDice" ablation: the clDice weight goes to BCE,
+        # so BCE + Dice keep a total weight of 1 and clDice is not computed.
+        self.use_cldice = use_cldice
         self.total_epochs = max(total_epochs, 1)
         self.decay_epochs = max(alpha_decay_epochs or total_epochs, 1)
         self.alpha_start = alpha_start
@@ -142,10 +146,13 @@ class RoadExtractionLoss(nn.Module):
             target_f32 = target.float()
             bce_loss = self.bce(logits_f32, target_f32)
             dice_loss = self.dice(logits_f32, target_f32)
-            cldice_loss = self.cldice(logits_f32, target_f32)
+            cldice_loss = self.cldice(logits_f32, target_f32) if self.use_cldice else torch.zeros_like(bce_loss)
 
         cldice_w = max(0.0, 1.0 - self.alpha - self.dice_weight)
-        total_loss = self.alpha * bce_loss + self.dice_weight * dice_loss + cldice_w * cldice_loss
+        if self.use_cldice:
+            total_loss = self.alpha * bce_loss + self.dice_weight * dice_loss + cldice_w * cldice_loss
+        else:
+            total_loss = (self.alpha + cldice_w) * bce_loss + self.dice_weight * dice_loss
 
         if return_components:
             components = {

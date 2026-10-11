@@ -263,7 +263,7 @@ The loss tells the network how wrong its prediction is. We combine three parts:
 \label{eq:loss}
 \end{equation}
 
-$\mathcal{L}_{\mathrm{BCE}}$ (binary cross entropy) and $\mathcal{L}_{\mathrm{Dice}}$ check each pixel; road pixels count twice in the first because roads are rare. $\mathcal{L}_{\mathrm{clDice}}$~\cite{shit2021cldice} first reduces both the prediction and the true road to centre lines one pixel wide and then measures how much of each centre line lies inside the other shape. A gap in a predicted road leaves part of the true centre line uncovered, so it raises this loss. Early in training the network cannot find roads yet, so the weight $\alpha$ starts at 0.50, favouring the pixel loss, and falls smoothly to 0.15 over the first 40 epochs, which gives the connectivity term more weight later.
+$\mathcal{L}_{\mathrm{BCE}}$ (binary cross entropy) and $\mathcal{L}_{\mathrm{Dice}}$ check each pixel; road pixels count twice in the first because roads are rare. $\mathcal{L}_{\mathrm{clDice}}$~\cite{shit2021cldice} first reduces both the prediction and the true road to centre lines one pixel wide and then measures how much of each centre line lies inside the other shape. A gap in a predicted road leaves part of the true centre line uncovered, so it raises this loss. Early in training the network cannot find roads yet, so the weight $\alpha$ starts at 0.50, favouring the pixel loss, and falls smoothly to 0.15 over the first 60 epochs, which gives the connectivity term more weight later.
 
 \subsection{Preventing Training Collapse}
 

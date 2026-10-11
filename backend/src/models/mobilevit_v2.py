@@ -99,6 +99,20 @@ class StripConv(nn.Module):
         return x
 
 
+class ConvBNAct(nn.Module):
+    """Plain 3×3 conv → BN → SiLU. Replaces StripConv in the ablation
+    MobileViT_v2(strip_conv=False); not used by the deployed model."""
+
+    def __init__(self, in_channels: int, out_channels: int, stride: int = 1):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, 3, stride=stride, padding=1, bias=False)
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = nn.SiLU(inplace=True)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.act(self.bn(self.conv(x)))
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  NOVELTY 2 — Channel Shift
 # ═══════════════════════════════════════════════════════════════════════════
@@ -318,6 +332,7 @@ class MobileViTv2Block(nn.Module):
     attn_dropout           : Attention weight dropout probability.
     shift_pixels           : Channel Shift displacement (Novelty 2).
     shift_fraction         : Fraction of channels to shift (Novelty 2).
+    use_transformer        : False drops step ③ (ablation: local convolutions only).
     """
 
     def __init__(
@@ -331,10 +346,12 @@ class MobileViTv2Block(nn.Module):
         attn_dropout: float = 0.0,
         shift_pixels: int = 2,
         shift_fraction: float = 0.25,
+        use_transformer: bool = True,
     ):
         super().__init__()
         self.patch_h = patch_size
         self.patch_w = patch_size
+        self.use_transformer = use_transformer
 
         # ① Channel Shift (Novelty 2)
         self.channel_shift = ChannelShift(shift_pixels, shift_fraction)
@@ -352,11 +369,12 @@ class MobileViTv2Block(nn.Module):
         )
 
         # ③ Global representation (transformer stack)
-        self.transformers = nn.Sequential(*[
-            TransformerBlock(transformer_dim, ffn_ratio, dropout, attn_dropout)
-            for _ in range(n_transformer_layers)
-        ])
-        self.post_norm = nn.LayerNorm(transformer_dim)
+        if use_transformer:
+            self.transformers = nn.Sequential(*[
+                TransformerBlock(transformer_dim, ffn_ratio, dropout, attn_dropout)
+                for _ in range(n_transformer_layers)
+            ])
+            self.post_norm = nn.LayerNorm(transformer_dim)
 
         # ④ Project back to input channel count
         self.proj = nn.Sequential(
@@ -432,10 +450,13 @@ class MobileViTv2Block(nn.Module):
         C_t = local_out.shape[1]
 
         # ③ Unfold → Transformer → Fold
-        tokens, fold_info = self._unfold(local_out)
-        tokens = self.transformers(tokens)
-        tokens = self.post_norm(tokens)
-        global_out = self._fold(tokens, fold_info, C_t)
+        if self.use_transformer:
+            tokens, fold_info = self._unfold(local_out)
+            tokens = self.transformers(tokens)
+            tokens = self.post_norm(tokens)
+            global_out = self._fold(tokens, fold_info, C_t)
+        else:
+            global_out = local_out
 
         # ④ Project back to in_channels
         global_out = self.proj(global_out)
@@ -495,13 +516,20 @@ class MobileViT_v2(nn.Module):
     """
 
     def __init__(self, num_classes: int = 1, width_mult: float = 1.0,
-                 attention_gates: bool = True):
+                 attention_gates: bool = True, strip_conv: bool = True,
+                 channel_shift: bool = True, transformer: bool = True):
         super().__init__()
         # attention_gates=False reproduces the original (June) architecture that
         # best_model.pth / best_model_new.pth were trained with -- plain U-Net-style
         # skip concatenation. Loading those checkpoints into the gated model with
         # strict=False silently leaves the gates randomly initialized.
+        # strip_conv / channel_shift / transformer = False are ablation variants
+        # (scripts/experiments); the defaults are the deployed v4 architecture.
         self.attention_gates = attention_gates
+        self.arch = {"attention_gates": attention_gates, "strip_conv": strip_conv,
+                     "channel_shift": channel_shift, "transformer": transformer}
+        conv = StripConv if strip_conv else ConvBNAct
+        mvit = dict(shift_fraction=0.25 if channel_shift else 0.0, use_transformer=transformer)
 
         def _c(channels: int) -> int:
             """Scale channel count by width multiplier, round to nearest 8."""
@@ -509,26 +537,26 @@ class MobileViT_v2(nn.Module):
 
         # ─── ENCODER ────────────────────────────────────────────────
         # Stem: Strip Convolution (Novelty 1 — road-shaped scanner)
-        self.stem = StripConv(3, _c(32), stride=2)         # 256 → 128
+        self.stem = conv(3, _c(32), stride=2)              # 256 → 128
 
         # Stage 1: MV2 downsampling
         self.enc1 = InvertedResidual(_c(32), _c(64), stride=2)  # 128 → 64
 
         # Stage 2: MobileViT v2 (Channel Shift) + downsample
         self.enc2_mvit = MobileViTv2Block(
-            _c(64), transformer_dim=_c(96), n_transformer_layers=2,
+            _c(64), transformer_dim=_c(96), n_transformer_layers=2, **mvit,
         )
         self.enc2_down = InvertedResidual(_c(64), _c(96), stride=2)  # 64 → 32
 
         # Stage 3: MobileViT v2 (Channel Shift) + downsample
         self.enc3_mvit = MobileViTv2Block(
-            _c(96), transformer_dim=_c(144), n_transformer_layers=2,
+            _c(96), transformer_dim=_c(144), n_transformer_layers=2, **mvit,
         )
         self.enc3_down = InvertedResidual(_c(96), _c(128), stride=2)  # 32 → 16
 
         # Bottleneck: deepest MobileViT v2 block (3 transformer layers)
         self.bottleneck = MobileViTv2Block(
-            _c(128), transformer_dim=_c(192), n_transformer_layers=3,
+            _c(128), transformer_dim=_c(192), n_transformer_layers=3, **mvit,
         )
 
         # ─── ATTENTION GATES FOR SKIPS ──────────────────────────────
@@ -541,15 +569,15 @@ class MobileViT_v2(nn.Module):
         # Each stage: bilinear upsample → concat gated skip → StripConv (Novelty 1)
         self.up3 = nn.Upsample(scale_factor=2, mode="bilinear",
                                align_corners=False)
-        self.dec3 = StripConv(_c(128) + _c(96), _c(96))    # 16 → 32
+        self.dec3 = conv(_c(128) + _c(96), _c(96))         # 16 → 32
 
         self.up2 = nn.Upsample(scale_factor=2, mode="bilinear",
                                align_corners=False)
-        self.dec2 = StripConv(_c(96) + _c(64), _c(64))     # 32 → 64
+        self.dec2 = conv(_c(96) + _c(64), _c(64))          # 32 → 64
 
         self.up1 = nn.Upsample(scale_factor=2, mode="bilinear",
                                align_corners=False)
-        self.dec1 = StripConv(_c(64) + _c(32), _c(32))     # 64 → 128
+        self.dec1 = conv(_c(64) + _c(32), _c(32))          # 64 → 128
 
         self.up0 = nn.Upsample(scale_factor=2, mode="bilinear",
                                align_corners=False)                     # 128 → 256
@@ -646,8 +674,11 @@ def load_mobilevit_checkpoint(checkpoint_path: str, device="cpu", width_mult: fl
     is_wrapped = isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
     state_dict = checkpoint["model_state_dict"] if is_wrapped else checkpoint
     has_gates = any(k.startswith("gate") for k in state_dict)
+    # Ablation checkpoints record their variant; older checkpoints are the default architecture.
+    arch = dict(checkpoint.get("arch", {})) if is_wrapped else {}
+    arch["attention_gates"] = has_gates
 
-    model = MobileViT_v2(num_classes=1, width_mult=width_mult, attention_gates=has_gates)
+    model = MobileViT_v2(num_classes=1, width_mult=width_mult, **arch)
     model.load_state_dict(state_dict, strict=True)
     model.to(device).eval()
 

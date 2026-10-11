@@ -47,7 +47,7 @@ import os, sys, glob, random, hashlib, subprocess, json, shutil, time, math, cop
 REPO = "/kaggle/working/repo"
 if not os.path.isdir(REPO):
     subprocess.run(["git", "clone", "-q", "--depth", "1",
-                    "https://github.com/Hrithik-Bhattacharya/Satellite-Imagery-based-Road-Network-Extraction.git", REPO],
+                    "https://github.com/Dilraj07/Satellite-Imagery-based-Road-Network-Extraction.git", REPO],
                    check=True)
 sys.path.insert(0, os.path.join(REPO, "backend"))
 print(subprocess.run(["git", "-C", REPO, "log", "-1", "--format=%h %s"], capture_output=True, text=True).stdout)

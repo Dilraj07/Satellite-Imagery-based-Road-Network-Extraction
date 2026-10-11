@@ -1,7 +1,7 @@
 """
-Reference segmentation architectures, used ONLY to measure compute cost
-(parameters, FLOPs, CPU latency) on the same hardware as the proposed model.
-None of these are trained here, so no accuracy is claimed for them.
+Reference segmentation architectures. Used to measure compute cost (parameters,
+FLOPs, CPU latency) on the same hardware as the proposed model, and trained on the
+paper's split by scripts/experiments (notebooks/train_compare.ipynb).
 
 - UNet: Ronneberger et al., 2015 (the widely used milesial/Pytorch-UNet layout,
   transposed-conv upsampling) -- 31,037,633 params at 3->1 channels.
@@ -70,9 +70,11 @@ class _LinkDecoder(nn.Sequential):
 
 
 class DLinkNet34(nn.Module):
-    def __init__(self, n_classes=1):
+    def __init__(self, n_classes=1, pretrained=False):
         super().__init__()
-        r = torchvision.models.resnet34(weights=None)
+        # pretrained=True loads the ImageNet ResNet-34 encoder, as in the original paper
+        # (used by the training baselines in scripts/experiments; cost runs use random weights).
+        r = torchvision.models.resnet34(weights="IMAGENET1K_V1" if pretrained else None)
         self.stem = nn.Sequential(r.conv1, r.bn1, r.relu, r.maxpool)
         self.e1, self.e2, self.e3, self.e4 = r.layer1, r.layer2, r.layer3, r.layer4
         self.dblock = _DBlock(512)
