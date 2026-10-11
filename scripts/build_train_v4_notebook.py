@@ -46,9 +46,16 @@ TEST_SHA1 = "2811fca6c9e44e6cdf713455a422502e4e5e4431"   # the 623 verified test
 import os, sys, glob, random, hashlib, subprocess, json, shutil, time, math, copy
 REPO = "/kaggle/working/repo"
 if not os.path.isdir(REPO):
-    subprocess.run(["git", "clone", "-q", "--depth", "1",
-                    "https://github.com/Dilraj07/Satellite-Imagery-based-Road-Network-Extraction.git", REPO],
-                   check=True)
+    REPO_URL = "https://github.com/Dilraj07/Satellite-Imagery-based-Road-Network-Extraction.git"
+    url = REPO_URL
+    try:   # a private repository needs the Kaggle secret GITHUB_TOKEN
+        from kaggle_secrets import UserSecretsClient
+        url = REPO_URL.replace("https://", "https://" + UserSecretsClient().get_secret("GITHUB_TOKEN") + "@")
+    except Exception:
+        pass
+    subprocess.run(["git", "clone", "-q", "--depth", "1", url, REPO], check=True,
+                   env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    subprocess.run(["git", "-C", REPO, "remote", "set-url", "origin", REPO_URL], check=True)
 sys.path.insert(0, os.path.join(REPO, "backend"))
 print(subprocess.run(["git", "-C", REPO, "log", "-1", "--format=%h %s"], capture_output=True, text=True).stdout)
 

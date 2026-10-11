@@ -21,10 +21,21 @@ REPO_URL = "%s"
 REPO_REF = "main"          # a branch, or a commit hash to pin the exact code
 REPO = "/kaggle/working/repo"
 if not os.path.isdir(REPO):
-    if subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", REPO_REF, REPO_URL, REPO]).returncode:
-        subprocess.run(["git", "clone", "-q", REPO_URL, REPO], check=True)          # REPO_REF is a commit
+    # A private repository needs a GitHub token saved as the Kaggle secret GITHUB_TOKEN
+    # (Add-ons, Secrets). A public repository needs nothing.
+    url = REPO_URL
+    try:
+        from kaggle_secrets import UserSecretsClient
+        url = REPO_URL.replace("https://", "https://" + UserSecretsClient().get_secret("GITHUB_TOKEN") + "@")
+    except Exception:
+        pass
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    if subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", REPO_REF, url, REPO], env=env).returncode:
+        if subprocess.run(["git", "clone", "-q", url, REPO], env=env).returncode:        # REPO_REF is a commit
+            raise RuntimeError("Could not download the repository: make it public, or add the Kaggle secret GITHUB_TOKEN.")
         subprocess.run(["git", "-C", REPO, "checkout", "-q", REPO_REF], check=True)
-V4 = os.path.join(REPO, "models", "best_model_v4.pth")   # the paper's model, included in the repository
+    subprocess.run(["git", "-C", REPO, "remote", "set-url", "origin", REPO_URL], check=True)   # no token in the saved output
+V4 =os.path.join(REPO, "models", "best_model_v4.pth")   # the paper's model, included in the repository
 print(subprocess.run(["git", "-C", REPO, "log", "-1", "--format=%%h %%s"], capture_output=True, text=True).stdout)
 try:
     import skimage
