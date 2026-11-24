@@ -75,15 +75,16 @@ Each run trains **one** model with the v4 training code: the same 5,323 training
 
 | `EXPERIMENT` | What it trains | Recipe |
 |---|---|---|
-| `dlinknet34` | D-LinkNet34 with ImageNet ResNet-34 encoder (as in the original paper) | full (160 epochs) |
-| `unet` | U-Net, random initialisation | full |
-| `lraspp_mbv3` | LR-ASPP MobileNetV3-Large with ImageNet backbone | full |
+| `unet` | U-Net (31.04M), random initialization | full (160 epochs) |
+| `dlinknet34_scratch` | D-LinkNet34 (31.10M), random initialization | full |
+| `dlinknet34` | D-LinkNet34, ImageNet ResNet-34 encoder (supplementary) | full |
+| `deeplabv3_mbv3` | DeepLabV3 MobileNetV3-Large (11.02M), random initialization | full |
+| `lraspp_mbv3` | LR-ASPP MobileNetV3-Large (3.22M), random initialization | full |
 | `abl_full` | Our network, unchanged (reference row of the ablation) | short (60 epochs) |
 | `abl_no_cldice` | Our network without clDice | short |
 | `abl_no_gates` | Our network without attention gates | short |
 | `abl_no_strip_shift` | Our network with plain 3x3 convolutions and no channel shift | short |
 | `abl_no_transformer` | Our network without transformer layers | short |
-| `dlinknet34_scratch` | Optional: D-LinkNet34 without pretraining | full |
 
 **How to run**
 1. Kaggle, New Notebook, add the dataset `balraj98/deepglobe-road-extraction-dataset`.

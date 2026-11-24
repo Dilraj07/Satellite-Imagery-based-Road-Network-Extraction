@@ -207,7 +207,7 @@ def network():
         block(x, yd, *dec[i], TEAL)
         c.arrow(gx + gw / 2, yg, gx + gw / 2, yd + bh, GOLD, lw=0.9)
     c.arrow(xs[4] + bw / 2, ye, xs[3] + bw, yd + bh * 0.75, TEAL, lw=1.0)
-    ax.text(xs[4] + 0.75, 1.05, "up x2,\ngating\nsignal", fontsize=4.8, color=TEAL, ha="left", va="center")
+    ax.text((xs[4] + bw / 2 + xs[3] + bw) / 2 + 0.08, 1.05, "up x2,\ngating\nsignal", fontsize=4.8, color=TEAL, ha="left", va="center")
     c.arrow(xs[3], yd + bh / 2, xs[2] + bw, yd + bh / 2, TEAL, lw=1.0)
     c.arrow(xs[2], yd + bh / 2, xs[1] + bw, yd + bh / 2, TEAL, lw=1.0)
     block(xs[0] - 0.53, yd, "Head", "Up x2, 1x1 conv, sigmoid", "1 x 256 x 256", PURPLE)

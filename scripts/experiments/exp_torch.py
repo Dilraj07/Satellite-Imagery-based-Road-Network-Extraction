@@ -52,13 +52,17 @@ MASS = {**FULL, "repeat": 2}
 EXPERIMENTS = {
     # Baselines: full recipe on the paper's split.
     "unet":        {"model": "unet", "recipe": {**FULL, "batch": 4, "accum": 2},
-                    "desc": "U-Net (Ronneberger et al., 2015), random initialisation"},
+                    "desc": "U-Net (Ronneberger et al., 2015), random initialization"},
     "dlinknet34":  {"model": "dlinknet34", "pretrained": True, "recipe": FULL,
-                    "desc": "D-LinkNet34 (Zhou et al., 2018), ImageNet ResNet-34 encoder as in the original"},
-    "lraspp_mbv3": {"model": "lraspp", "pretrained": True, "recipe": FULL,
-                    "desc": "LR-ASPP MobileNetV3-Large (Howard et al., 2019), ImageNet backbone"},
+                    "desc": "D-LinkNet34 (Zhou et al., 2018), ImageNet ResNet-34 encoder as in original"},
     "dlinknet34_scratch": {"model": "dlinknet34", "pretrained": False, "recipe": FULL,
-                           "desc": "Optional: D-LinkNet34 without pretraining (same start as our network)"},
+                           "desc": "D-LinkNet34 without pretraining (from scratch, matching proposed model)"},
+    "deeplabv3_mbv3": {"model": "deeplabv3", "pretrained": False, "recipe": FULL,
+                       "desc": "DeepLabV3 MobileNetV3-Large (Chen et al., 2017), random initialization"},
+    "lraspp_mbv3": {"model": "lraspp", "pretrained": False, "recipe": FULL,
+                    "desc": "LR-ASPP MobileNetV3-Large (Howard et al., 2019), random initialization"},
+    "lraspp_mbv3_pretrained": {"model": "lraspp", "pretrained": True, "recipe": FULL,
+                               "desc": "LR-ASPP MobileNetV3-Large with ImageNet backbone"},
     # Ablations: SHORT recipe, one change each.
     "abl_full":           {"model": "mobilevit", "arch": {}, "recipe": SHORT,
                            "desc": "Proposed network, short recipe (reference row of the ablation)"},
@@ -91,6 +95,9 @@ def build_model(spec, pretrained=None):
     if kind == "lraspp":
         return R._TorchvisionSeg(torchvision.models.segmentation.lraspp_mobilenet_v3_large(
             weights=None, weights_backbone="IMAGENET1K_V1" if pre else None, num_classes=1))
+    if kind == "deeplabv3":
+        return R._TorchvisionSeg(torchvision.models.segmentation.deeplabv3_mobilenet_v3_large(
+            weights=None, weights_backbone="IMAGENET1K_V1" if pre else None, num_classes=1, aux_loss=False))
     raise ValueError(kind)
 
 
