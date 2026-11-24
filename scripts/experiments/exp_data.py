@@ -55,15 +55,40 @@ def find_deepglobe(root="/kaggle/input"):
 
 
 def deepglobe_split(train_dir, select_tiles=280, check_sha=True):
-    """The v4 split: seed 42 shuffle, last 10% = test; 280 selection tiles (seed 7) from the rest."""
-    ids = [os.path.basename(f).replace("_sat.jpg", "") for f in glob.glob(os.path.join(train_dir, "*_sat.jpg"))]
-    ids = [i for i in ids if os.path.exists(os.path.join(train_dir, f"{i}_mask.png"))]
-    random.Random(42).shuffle(ids)          # same sequence as random.seed(42); random.shuffle(ids)
+    """The v4 split: identical 5,323 train / 280 selection / 623 test tiles as recorded in split.json."""
+    split_candidates = [
+        os.path.join(REPO, "models", "v4_training", "split.json"),
+        os.path.join(os.getcwd(), "models", "v4_training", "split.json"),
+        "/kaggle/working/repo/models/v4_training/split.json",
+    ]
+    split_json = next((p for p in split_candidates if os.path.isfile(p)), None)
+    all_ids = {os.path.basename(f).replace("_sat.jpg", "") for f in glob.glob(os.path.join(train_dir, "*_sat.jpg"))}
+    all_ids = {i for i in all_ids if os.path.exists(os.path.join(train_dir, f"{i}_mask.png"))}
+
+    if split_json is not None:
+        import json
+        with open(split_json, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        test = saved.get("test_ids", [])
+        select = saved.get("select_val_ids", [])
+        if set(test).issubset(all_ids) and set(select).issubset(all_ids):
+            train = sorted(all_ids - set(test) - set(select))
+            if check_sha:
+                assert sha1(test) == TEST_SHA1, "test tiles differ from the paper's 623 tiles"
+                assert sha1(select) == saved.get("select_val_sha1"), "selection tiles differ from split.json"
+                if "train_sha1" in saved and len(train) == saved.get("train", 5323):
+                    assert sha1(train) == saved.get("train_sha1"), "training tiles differ from split.json"
+            assert not (set(train) | set(select)) & set(test)
+            return {"train": train, "select": select, "test": test}
+
+    # Fallback for synthetic/custom datasets where split.json IDs do not exist
+    ids = sorted(all_ids)
+    random.Random(42).shuffle(ids)
     cut = int(len(ids) * 0.9)
     pool, test = ids[:cut], ids[cut:]
     if check_sha:
         assert sha1(test) == TEST_SHA1, "test tiles differ from the paper's 623 tiles"
-    select = sorted(random.Random(7).sample(pool, select_tiles))
+    select = sorted(random.Random(7).sample(pool, min(select_tiles, len(pool))))
     train = sorted(set(pool) - set(select))
     assert not (set(train) | set(select)) & set(test)
     return {"train": train, "select": select, "test": test}

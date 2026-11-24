@@ -97,7 +97,8 @@ Each run trains **one** model with the v4 training code: the same 5,323 training
 6. Download `<EXPERIMENT>/best_<EXPERIMENT>.pth`. After 20 training steps the log prints the
    expected time per epoch and in total."""),
     code(r'''# Settings
-EXPERIMENT = "dlinknet34"
+# Options: "unet", "dlinknet34_scratch", "deeplabv3_mbv3", "lraspp_mbv3", "dlinknet34"
+EXPERIMENT = "unet"
 SMOKE_TEST = False       # True: 2 short epochs on a few tiles, to check that everything runs
 TIME_LIMIT_H = 11.0      # stop and save before Kaggle's 12 hour limit
 NUM_WORKERS = 4'''),

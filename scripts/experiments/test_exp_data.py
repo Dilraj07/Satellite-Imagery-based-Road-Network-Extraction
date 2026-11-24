@@ -100,6 +100,19 @@ def test_split_and_tile_record_on_fake_dataset():
         assert summary["iou"] == 1.0 and summary["n_tiles"] == 2
 
 
+def test_split_json_loads_correctly():
+    split_path = os.path.join(D.REPO, "models", "v4_training", "split.json")
+    assert os.path.isfile(split_path)
+    import json
+    with open(split_path, "r", encoding="utf-8") as f:
+        s = json.load(f)
+    assert len(s["test_ids"]) == 623
+    assert len(s["select_val_ids"]) == 280
+    assert D.sha1(s["test_ids"]) == D.TEST_SHA1
+    assert D.sha1(s["select_val_ids"]) == s["select_val_sha1"]
+    assert not set(s["select_val_ids"]) & set(s["test_ids"])
+
+
 def test_massachusetts_discovery():
     with tempfile.TemporaryDirectory() as root:
         for fmt in ("png", "tiff"):
