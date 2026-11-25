@@ -1,0 +1,25 @@
+{
+ "experiment": "lraspp_mbv3",
+ "best": {
+  "iou": 0.5800686626649939,
+  "epoch": 148,
+  "weights": "raw"
+ },
+ "epochs_run": 160,
+ "recipe": {
+  "epochs": 160,
+  "warmup_epochs": 5,
+  "alpha_decay_epochs": 60,
+  "min_epochs": 80,
+  "patience": 40,
+  "crop": 512,
+  "batch": 8,
+  "accum": 1,
+  "lr": 0.001,
+  "min_lr": 1e-05,
+  "weight_decay": 0.0001,
+  "ema_decay": 0.999,
+  "max_pos_frac": 0.2,
+  "repeat": 1
+ }
+}

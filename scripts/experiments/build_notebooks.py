@@ -202,7 +202,38 @@ for var in ("tta_raw", "tta_full", "single_raw"):
 print("\nPaired Wilcoxon tests on per tile IoU (positive mean_diff: the first model is better):")
 for k, t in TESTS.items():
     print(f"  {k:45s} mean diff {100 * t['mean_diff']:+.2f} points | better on {100 * t['frac_tiles_better']:.0f}% of tiles | p = {t['wilcoxon_p']}")'''),
-    code(r'''# Save
+    code(r'''# Export ONNX & Save
+onnx_dir = os.path.join(OUT, "onnx")
+os.makedirs(onnx_dir, exist_ok=True)
+try:
+    import importlib.util, inspect
+    for pkg in ("onnx", "onnxscript"):
+        if importlib.util.find_spec(pkg) is None:
+            subprocess.run([sys.executable, "-m", "pip", "install", "-q", pkg], check=False)
+
+    class _SigWrap(torch.nn.Module):
+        def __init__(self, m):
+            super().__init__()
+            self.m = m
+        def forward(self, x):
+            return torch.sigmoid(self.m(x))
+
+    kw = {"dynamo": False} if "dynamo" in inspect.signature(torch.onnx.export).parameters else {}
+    for n in order:
+        try:
+            m, _ = T.load_any_checkpoint(found[n][0], torch.device("cpu"))
+            w = _SigWrap(m).eval()
+            dummy = torch.randn(1, 3, 512 if n == "unet" else 1024, 512 if n == "unet" else 1024)
+            dyn = {"input_image": {0: "batch", 2: "height", 3: "width"}, "road_probability": {0: "batch", 2: "height", 3: "width"}} if n == "unet" else None
+            torch.onnx.export(w, dummy, os.path.join(onnx_dir, f"{n}.onnx"), export_params=True, opset_version=18,
+                              do_constant_folding=True, input_names=["input_image"], output_names=["road_probability"],
+                              dynamic_axes=dyn, **kw)
+            print(f"exported onnx/{n}.onnx")
+        except Exception as exc:
+            print(f"skipped onnx/{n}.onnx ({exc})")
+except Exception as exc:
+    print("ONNX export skipped:", exc)
+
 rows = []
 for n in order:
     for var in SUMMARY[n]:

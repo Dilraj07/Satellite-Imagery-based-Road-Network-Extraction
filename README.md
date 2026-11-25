@@ -98,8 +98,8 @@ Training and accuracy evaluation need the DeepGlobe dataset and a GPU, so they r
 
 | Notebook | What it does |
 |---|---|
-| `notebooks/train_compare.ipynb` | Trains one model on the same split with the v4 training code. Set `EXPERIMENT` to a baseline (`dlinknet34`, `unet`, `lraspp_mbv3`) or an ablation (`abl_full`, `abl_no_cldice`, `abl_no_gates`, `abl_no_strip_shift`, `abl_no_transformer`). Resumable like `train_v4`. |
-| `notebooks/evaluate_compare.ipynb` | Scores every trained model on the 623 test tiles with the paper's metrics. It re-measures v4 first and stops if the paper's numbers are not reproduced. |
+| `notebooks/train_compare.ipynb` | Trains one model on the same split with the v4 training code. Set `EXPERIMENT` to a baseline (`unet`, `dlinknet34_scratch`, `deeplabv3_mbv3`, `lraspp_mbv3`, `dlinknet34`) or an ablation (`abl_full`, `abl_no_cldice`, `abl_no_gates`, `abl_no_strip_shift`, `abl_no_transformer`). Resumable like `train_v4`. |
+| `notebooks/evaluate_compare.ipynb` | Scores every trained model on the 623 test tiles with the paper's metrics and exports `.onnx` graphs. It re-measures v4 first and stops if the paper's numbers are not reproduced. |
 | `notebooks/massachusetts.ipynb` | Runs v4 on the Massachusetts Roads test tiles without retraining, then trains and tests on the official Massachusetts split. |
 
 The code is in `scripts/experiments/` (`exp_data.py`: split and metrics; `exp_torch.py`: experiments,
@@ -154,6 +154,7 @@ The notebooks are generated from Python sources; after editing those, run `make 
 │   ├── measurements/                   speed, parity, graph analysis JSON files
 │   └── deck/, report/, fig_*           figures of the project report (August v2 model)
 ├── data/samples/                       eight 1024 x 1024 sample tiles
+├── Outputs/                            organized per-baseline Kaggle logs, curves, and checkpoints
 ├── docs/
 │   ├── paper/                          IEEE Access paper (main.tex, figures, class files)
 │   ├── report/                         project report, execution guide

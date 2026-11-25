@@ -1,0 +1,25 @@
+{
+ "experiment": "unet",
+ "best": {
+  "iou": 0.5623760800761717,
+  "epoch": 40,
+  "weights": "ema"
+ },
+ "epochs_run": 55,
+ "recipe": {
+  "epochs": 160,
+  "warmup_epochs": 5,
+  "alpha_decay_epochs": 60,
+  "min_epochs": 80,
+  "patience": 40,
+  "crop": 512,
+  "batch": 4,
+  "accum": 2,
+  "lr": 0.001,
+  "min_lr": 1e-05,
+  "weight_decay": 0.0001,
+  "ema_decay": 0.999,
+  "max_pos_frac": 0.2,
+  "repeat": 1
+ }
+}
