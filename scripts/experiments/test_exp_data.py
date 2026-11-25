@@ -127,3 +127,33 @@ def test_massachusetts_discovery():
         split = D.massachusetts_split(tiff)
         assert [len(split[k]) for k in ("train", "select", "test")] == [2, 2, 2]
         assert split["test"][0][0] == "10078660_15"
+
+
+def test_find_checkpoints_variants():
+    import zipfile
+    with tempfile.TemporaryDirectory() as root:
+        cache = os.path.join(root, "cache")
+        inp = os.path.join(root, "input")
+        os.makedirs(inp)
+        # 1. Plain .pth
+        p_pth = os.path.join(inp, "best_a.pth")
+        open(p_pth, "wb").write(b"x")
+        # 2. Browser-renamed PyTorch .zip
+        p_zip = os.path.join(inp, "best_b.zip")
+        with zipfile.ZipFile(p_zip, "w") as zf:
+            zf.writestr("best_b/data.pkl", b"x")
+        # 3. Bundle .zip containing a .pth
+        with zipfile.ZipFile(os.path.join(inp, "bundle.zip"), "w") as zf:
+            zf.writestr("sub/best_c.pth", b"x")
+        # 4. Unpacked PyTorch folder (Kaggle auto-unzip)
+        unpacked = os.path.join(inp, "ds", "best_d")
+        os.makedirs(unpacked)
+        open(os.path.join(unpacked, "data.pkl"), "wb").write(b"x")
+        open(os.path.join(unpacked, "version"), "wb").write(b"2")
+
+        found = D.find_checkpoints(inp, prefix="best_", cache_dir=cache)
+        bases = {os.path.basename(p) for p in found}
+        assert bases == {"best_a.pth", "best_b.zip", "best_c.pth", "best_d.pth"}
+        repacked = [p for p in found if os.path.basename(p) == "best_d.pth"][0]
+        with zipfile.ZipFile(repacked) as zf:
+            assert "best_d/data.pkl" in zf.namelist()

@@ -224,7 +224,8 @@ def train_experiment(name, train_items, select_items, out_dir, test_sha1=None, i
     start_epoch, best, history, ema_steps = 0, {"iou": -1.0, "epoch": 0}, [], 0
 
     # Resume from the attached output that got furthest (rows in its history.csv), or from this session.
-    previous = glob.glob(os.path.join(input_root, "**", name, "train_state.pth"), recursive=True)
+    previous = (glob.glob(os.path.join(input_root, "**", name, "train_state.pth"), recursive=True)
+                + glob.glob(os.path.join(input_root, "**", name, "train_state.zip"), recursive=True))
     previous += [state_path] if os.path.exists(state_path) else []
     epochs_done = lambda p: sum(1 for _ in open(os.path.join(os.path.dirname(p), "history.csv"))) \
         if os.path.exists(os.path.join(os.path.dirname(p), "history.csv")) else 0
@@ -238,10 +239,12 @@ def train_experiment(name, train_items, select_items, out_dir, test_sha1=None, i
         if st.get("scaler"):
             scaler.load_state_dict(st["scaler"])
         start_epoch, best, history, ema_steps = st["epoch"] + 1, st["best"], st["history"], st["ema_steps"]
-        src = os.path.join(os.path.dirname(previous[-1]), f"best_{name}.pth")
-        if os.path.exists(src) and os.path.abspath(src) != os.path.abspath(best_path):
-            import shutil
-            shutil.copy(src, best_path)
+        for ext in ("pth", "zip"):
+            src = os.path.join(os.path.dirname(previous[-1]), f"best_{name}.{ext}")
+            if os.path.exists(src) and os.path.abspath(src) != os.path.abspath(best_path):
+                import shutil
+                shutil.copy(src, best_path)
+                break
         print(f"RESUMED from {previous[-1]} at epoch {start_epoch}; best so far {best}")
     last_healthy_path = state_path if os.path.exists(state_path) else (previous[-1] if previous and not smoke_test else None)
 
@@ -374,6 +377,10 @@ def train_experiment(name, train_items, select_items, out_dir, test_sha1=None, i
 
 
 # ── Prediction and evaluation ────────────────────────────────────────────────
+
+def find_checkpoints(root="/kaggle/input", prefix="best_", cache_dir="/tmp/ckpt_cache"):
+    return D.find_checkpoints(root=root, prefix=prefix, cache_dir=cache_dir)
+
 
 def load_any_checkpoint(path, device):
     """(model in eval mode, metadata) for an experiment checkpoint or a v4/v3 MobileViT checkpoint."""

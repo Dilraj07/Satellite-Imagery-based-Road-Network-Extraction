@@ -20,21 +20,22 @@ import os, sys, glob, json, subprocess, shutil, zipfile
 REPO_URL = "%s"
 REPO_REF = "main"          # a branch, or a commit hash to pin the exact code
 REPO = "/kaggle/working/repo"
+url = REPO_URL
+try:
+    from kaggle_secrets import UserSecretsClient
+    url = REPO_URL.replace("https://", "https://" + UserSecretsClient().get_secret("GITHUB_TOKEN") + "@")
+except Exception:
+    pass
+env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
 if not os.path.isdir(REPO):
-    # A private repository needs a GitHub token saved as the Kaggle secret GITHUB_TOKEN
-    # (Add-ons, Secrets). A public repository needs nothing.
-    url = REPO_URL
-    try:
-        from kaggle_secrets import UserSecretsClient
-        url = REPO_URL.replace("https://", "https://" + UserSecretsClient().get_secret("GITHUB_TOKEN") + "@")
-    except Exception:
-        pass
-    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
     if subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", REPO_REF, url, REPO], env=env).returncode:
         if subprocess.run(["git", "clone", "-q", url, REPO], env=env).returncode:        # REPO_REF is a commit
             raise RuntimeError("Could not download the repository: make it public, or add the Kaggle secret GITHUB_TOKEN.")
         subprocess.run(["git", "-C", REPO, "checkout", "-q", REPO_REF], check=True)
-    subprocess.run(["git", "-C", REPO, "remote", "set-url", "origin", REPO_URL], check=True)   # no token in the saved output
+else:
+    if not subprocess.run(["git", "-C", REPO, "fetch", "-q", "--depth", "1", url, REPO_REF], env=env).returncode:
+        subprocess.run(["git", "-C", REPO, "checkout", "-q", "FETCH_HEAD"], env=env)
+subprocess.run(["git", "-C", REPO, "remote", "set-url", "origin", REPO_URL], check=True)   # no token in the saved output
 V4 =os.path.join(REPO, "models", "best_model_v4.pth")   # the paper's model, included in the repository
 print(subprocess.run(["git", "-C", REPO, "log", "-1", "--format=%%h %%s"], capture_output=True, text=True).stdout)
 try:
@@ -50,12 +51,14 @@ print("torch", torch.__version__, "|", torch.cuda.get_device_name(0))''' % REPO_
 
 TABLE = r'''def table(rows):
     """rows: [(name, params, summary dict)] -> printed table and LaTeX lines."""
-    keys = [("iou", "IoU"), ("f1", "F1"), ("relaxed_f1", "Rel. F1"), ("cldice", "clDice"), ("canopy_recall", "Canopy R")]
+    keys = [("precision", "P"), ("recall", "R"), ("f1", "F1"), ("iou", "IoU"),
+            ("relaxed_f1", "Rel. F1"), ("cldice", "clDice"), ("canopy_recall", "Canopy R")]
     df = pd.DataFrame([{"model": n, "params (M)": round(p / 1e6, 2) if p else None,
                         **{h: round(100 * s[k], 1) for k, h in keys},
-                        "parts": s["median_components_per_tile"]} for n, p, s in rows])
+                        "parts": int(round(s["median_components_per_tile"]))} for n, p, s in rows])
     print(df.to_string(index=False))
-    latex = [f"{n} & {p / 1e6:.2f} & " + " & ".join(f"{100 * s[k]:.1f}" for k, _ in keys) + " \\\\" for n, p, s in rows]
+    latex = [f"{n} & {p / 1e6:.2f} & " + " & ".join(f"{100 * s[k]:.1f}" for k, _ in keys)
+             + f" & {s['median_components_per_tile']:.0f} \\\\" for n, p, s in rows]
     return df, latex'''
 
 
@@ -150,11 +153,11 @@ test_items = D.deepglobe_items(DG, D.deepglobe_split(DG)["test"])
 VEG_T = D.otsu_vegetation_threshold(test_items)
 print(len(test_items), "test tiles | vegetation threshold", VEG_T, "(paper: 0.1191)")
 assert abs(VEG_T - 0.119140625) < 1e-6'''),
-    code(r'''# Checkpoints: v4 plus one file per experiment (the copy with the best selection score)
+    code(r'''# Checkpoints: v4 plus one file per experiment (.pth, browser-renamed .zip, or unpacked Kaggle dir)
 found = {}
-for path in sorted(glob.glob("/kaggle/input/**/*.pth", recursive=True)):
+for path in T.find_checkpoints("/kaggle/input", prefix="best_"):
     base = os.path.basename(path)
-    if not base.startswith("best_") or base == "best_model_v4.pth" or "train_state" in base:
+    if base.startswith("best_model_v4") or "train_state" in base:
         continue
     ck = torch.load(path, map_location="cpu", weights_only=False)
     if not isinstance(ck, dict) or "experiment" not in ck:

@@ -300,3 +300,56 @@ def paired_test(records_a, records_b, variant, metric="iou"):
     return {"n_tiles": len(tiles), "mean_diff": float(diff.mean()) if len(tiles) else float("nan"),
             "frac_tiles_better": float((diff > 0).mean()) if len(tiles) else float("nan"),
             "wilcoxon_p": float(w.pvalue) if w else None}
+
+
+def find_checkpoints(root="/kaggle/input", prefix="best_", cache_dir="/tmp/ckpt_cache"):
+    """Find checkpoints under root (.pth, browser-renamed .zip, bundle .zip, or unpacked data.pkl dirs)."""
+    import shutil
+    import zipfile
+
+    out = []
+    if not os.path.isdir(root):
+        return out
+
+    def _tag_path(tag, fname):
+        sub = os.path.join(cache_dir, hashlib.md5(tag.encode()).hexdigest()[:8])
+        os.makedirs(sub, exist_ok=True)
+        return os.path.join(sub, fname)
+
+    for dirpath, _, files in os.walk(root):
+        fnset = set(files)
+        dname = os.path.basename(dirpath)
+        if "data.pkl" in fnset and (".format_version" in fnset or "version" in fnset) and dname.startswith(prefix):
+            dst = _tag_path(dirpath, dname + ".pth")
+            if not os.path.exists(dst):
+                base_parent = os.path.dirname(dirpath)
+                with zipfile.ZipFile(dst, "w", compression=zipfile.ZIP_STORED) as zf:
+                    for sub_root, _, sub_files in os.walk(dirpath):
+                        for sf in sub_files:
+                            fp = os.path.join(sub_root, sf)
+                            zf.write(fp, os.path.relpath(fp, base_parent).replace("\\", "/"))
+            out.append(dst)
+            continue
+
+        for fn in sorted(files):
+            fp = os.path.join(dirpath, fn)
+            if fn.endswith(".pth") and fn.startswith(prefix):
+                out.append(fp)
+            elif fn.endswith(".zip"):
+                try:
+                    with zipfile.ZipFile(fp) as zf:
+                        names = zf.namelist()
+                        if fn.startswith(prefix) and any(n == "data.pkl" or (n.count("/") == 1 and n.endswith("/data.pkl")) for n in names):
+                            out.append(fp)
+                        else:
+                            for m in sorted(names):
+                                mb = os.path.basename(m)
+                                if mb.startswith(prefix) and mb.endswith(".pth") and not m.endswith("/"):
+                                    dst = _tag_path(f"{fp}:{m}", mb)
+                                    if not os.path.exists(dst):
+                                        with zf.open(m) as src, open(dst, "wb") as dst_f:
+                                            shutil.copyfileobj(src, dst_f)
+                                    out.append(dst)
+                except zipfile.BadZipFile:
+                    pass
+    return sorted(set(out))
