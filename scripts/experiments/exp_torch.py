@@ -153,14 +153,14 @@ def pad32(x):
 # ── Validation during training (the v4 selection score) ─────────────────────
 
 @torch.no_grad()
-def validate(net, loader, device):
+def validate(net, loader, device, amp=True):
     net.eval()
     tp = fp = fn = 0.0
     pos, cl, n = 0.0, 0.0, 0
     for x, y in loader:
         x, y = x.to(device), y.to(device)
         xp, h, w = pad32(x)
-        with torch.autocast(device.type, enabled=device.type == "cuda"):
+        with torch.autocast(device.type, enabled=amp and device.type == "cuda"):
             p = torch.sigmoid(net(xp)).float()[..., :h, :w]
         b = (p > 0.5).float()
         tp += (b * y).sum().item(); fp += (b * (1 - y)).sum().item(); fn += ((1 - b) * y).sum().item()
@@ -219,7 +219,8 @@ def train_experiment(name, train_items, select_items, out_dir, test_sha1=None, i
         return min_ratio + (1 - min_ratio) * 0.5 * (1 + math.cos(math.pi * t))
 
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda)
-    scaler = torch.amp.GradScaler("cuda", enabled=device.type == "cuda")
+    use_amp = device.type == "cuda"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     start_epoch, best, history, ema_steps = 0, {"iou": -1.0, "epoch": 0}, [], 0
 
     # Resume from the attached output that got furthest (rows in its history.csv), or from this session.
@@ -231,59 +232,120 @@ def train_experiment(name, train_items, select_items, out_dir, test_sha1=None, i
     if previous and not smoke_test:
         st = torch.load(previous[-1], map_location=device, weights_only=False)
         model.load_state_dict(st["model"]); ema.load_state_dict(st["ema"])
-        opt.load_state_dict(st["opt"]); sched.load_state_dict(st["sched"]); scaler.load_state_dict(st["scaler"])
+        opt.load_state_dict(st["opt"]); sched.load_state_dict(st["sched"])
+        use_amp = st.get("use_amp", use_amp)
+        scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
+        if st.get("scaler"):
+            scaler.load_state_dict(st["scaler"])
         start_epoch, best, history, ema_steps = st["epoch"] + 1, st["best"], st["history"], st["ema_steps"]
         src = os.path.join(os.path.dirname(previous[-1]), f"best_{name}.pth")
         if os.path.exists(src) and os.path.abspath(src) != os.path.abspath(best_path):
             import shutil
             shutil.copy(src, best_path)
         print(f"RESUMED from {previous[-1]} at epoch {start_epoch}; best so far {best}")
+    last_healthy_path = state_path if os.path.exists(state_path) else (previous[-1] if previous and not smoke_test else None)
 
     print(f"{name}: {spec['desc']}\nparameters {n_params(model):,} | {len(train_items)} training tiles "
           f"x{rc['repeat']} | {len(select_items)} selection tiles | {steps_per_epoch} steps per epoch | recipe {rc}")
     if start_epoch == 0:   # preflight: the selection pass runs before any long training
         sub = DataLoader(TileDataset(select_items[:2], NORMALIZE), batch_size=1)
-        print("preflight selection pass:", {k: round(v, 4) for k, v in validate(model, sub, device).items()})
+        print("preflight selection pass:", {k: round(v, 4) for k, v in validate(model, sub, device, amp=use_amp).items()})
 
     meta = {"experiment": name, "spec": spec, "arch": spec.get("arch", {}), "test_ids_sha1": test_sha1,
             "n_train": len(train_items), "n_select": len(select_items), "params": n_params(model)}
+    # Snapshot buffers (e.g. BatchNorm running stats) so an FP16 overflow never poisons running_mean/var.
+    bn_bufs = {k: v.clone() for k, v in model.named_buffers()}
     t_start, stopped_for_time = time.time(), False
     for epoch in range(start_epoch, rc["epochs"]):
         t0 = time.time()
         model.train()
         alpha = loss_fn.update_alpha(epoch)
-        run_loss, steps = 0.0, 0
+        run_loss, steps, micro, epoch_opt_steps, amp_fallbacks, fp32_bad_steps = 0.0, 0, 0, 0, 0, 0
         opt.zero_grad(set_to_none=True)
         for i, (x, y) in enumerate(train_loader):
             x, y = x.to(device, non_blocking=True), y.to(device, non_blocking=True)
-            with torch.autocast(device.type, enabled=device.type == "cuda"):
+            with torch.autocast(device.type, enabled=use_amp):
                 logits = model(x)
             loss = loss_fn(logits, y)
-            scaler.scale(loss / rc["accum"]).backward()
-            run_loss += loss.item(); steps += 1
-            if (i + 1) % rc["accum"]:
+            loss_val = loss.item()
+            if use_amp and not (math.isfinite(loss_val) and torch.isfinite(logits).all()):
+                with torch.no_grad():
+                    for k, b in model.named_buffers():
+                        b.copy_(bn_bufs[k])
+                with torch.autocast(device.type, enabled=False):
+                    logits = model(x)
+                loss = loss_fn(logits, y)
+                loss_val = loss.item()
+                amp_fallbacks += 1
+                if amp_fallbacks <= 3:
+                    print(f"  [amp-fallback] epoch {epoch} step {i}: non-finite in FP16, retried in FP32 (loss={loss_val:.4f})")
+            if not math.isfinite(loss_val):
+                with torch.no_grad():
+                    for k, b in model.named_buffers():
+                        b.copy_(bn_bufs[k])
+                opt.zero_grad(set_to_none=True)
+                micro = 0
+                fp32_bad_steps += 1
+                if fp32_bad_steps >= 5:
+                    print(f"  [stability] epoch {epoch} step {i}: {fp32_bad_steps} non-finite batches in FP32; aborting epoch early for rollback.")
+                    steps = 0
+                    break
                 continue
+            scaler.scale(loss / rc["accum"]).backward()
+            run_loss += loss_val; steps += 1; micro += 1
+            with torch.no_grad():
+                for k, b in model.named_buffers():
+                    bn_bufs[k].copy_(b)
+            if micro < rc["accum"]:
+                continue
+            micro = 0
             scaler.unscale_(opt)
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(opt); scaler.update(); sched.step()
+            old_scale = scaler.get_scale()
+            scaler.step(opt); scaler.update()
             opt.zero_grad(set_to_none=True)
-            ema_steps += 1
-            d = min(rc["ema_decay"], (1 + ema_steps) / (10 + ema_steps))
-            with torch.no_grad():
-                for ve, vm in zip(ema.state_dict().values(), model.state_dict().values()):
-                    if ve.dtype.is_floating_point:
-                        ve.mul_(d).add_(vm.detach(), alpha=1 - d)
-                    else:
-                        ve.copy_(vm)
-            if epoch == start_epoch and ema_steps - start_epoch * steps_per_epoch == 20:
-                per_step = (time.time() - t0) / 20
-                print(f"timing: {per_step:.2f} s per step -> about {per_step * steps_per_epoch / 60:.1f} min of "
-                      f"training per epoch, {per_step * total / 3600:.1f} h for {rc['epochs']} epochs (plus selection passes)")
+            if scaler.get_scale() >= old_scale:
+                sched.step()
+                ema_steps += 1
+                epoch_opt_steps += 1
+                d = min(rc["ema_decay"], (1 + ema_steps) / (10 + ema_steps))
+                with torch.no_grad():
+                    for ve, vm in zip(ema.state_dict().values(), model.state_dict().values()):
+                        if ve.dtype.is_floating_point:
+                            ve.mul_(d).add_(vm.detach(), alpha=1 - d)
+                        else:
+                            ve.copy_(vm)
+                if epoch == start_epoch and epoch_opt_steps == 20:
+                    per_step = (time.time() - t0) / 20
+                    print(f"timing: {per_step:.2f} s per step -> about {per_step * steps_per_epoch / 60:.1f} min of "
+                          f"training per epoch, {per_step * total / 3600:.1f} h for {rc['epochs']} epochs (plus selection passes)")
 
-        v_raw, v_ema = validate(model, val_loader, device), validate(ema, val_loader, device)
-        row = {"epoch": epoch, "lr": sched.get_last_lr()[0], "alpha": alpha, "train_loss": run_loss / max(steps, 1),
-               **{f"val_{k}": v for k, v in v_raw.items()}, **{f"ema_{k}": v for k, v in v_ema.items()},
-               "epoch_min": (time.time() - t0) / 60}
+        if use_amp and amp_fallbacks >= 20:
+            use_amp = False
+            scaler = torch.amp.GradScaler("cuda", enabled=False)
+            print(f"  [amp-fallback] epoch {epoch}: {amp_fallbacks} FP16 overflows; switching remaining epochs to FP32.")
+
+        healthy = (steps > 0 and all(torch.isfinite(v).all() for v in model.state_dict().values())
+                   and all(torch.isfinite(v).all() for v in ema.state_dict().values()))
+        if healthy:
+            v_raw, v_ema = validate(model, val_loader, device, amp=use_amp), validate(ema, val_loader, device, amp=use_amp)
+            row = {"epoch": epoch, "lr": sched.get_last_lr()[0], "alpha": alpha,
+                   "train_loss": run_loss / steps,
+                   **{f"val_{k}": v for k, v in v_raw.items()}, **{f"ema_{k}": v for k, v in v_ema.items()},
+                   "epoch_min": (time.time() - t0) / 60}
+            healthy = math.isfinite(row["train_loss"])
+        if not healthy:
+            print(f"WARNING: epoch {epoch} ended non-finite (steps={steps}); restoring previous healthy state and disabling AMP.")
+            if last_healthy_path and os.path.exists(last_healthy_path):
+                st = torch.load(last_healthy_path, map_location=device, weights_only=False)
+                model.load_state_dict(st["model"]); ema.load_state_dict(st["ema"])
+                opt.load_state_dict(st["opt"]); sched.load_state_dict(st["sched"])
+                bn_bufs = {k: v.clone() for k, v in model.named_buffers()}
+                use_amp = False
+                scaler = torch.amp.GradScaler("cuda", enabled=False)
+                continue
+            break
+
         history.append(row)
         for tag, net, v in (("raw", model, v_raw), ("ema", ema, v_ema)):
             if v["positive_frac"] <= rc["max_pos_frac"] and v["iou"] > best["iou"]:
@@ -291,8 +353,9 @@ def train_experiment(name, train_items, select_items, out_dir, test_sha1=None, i
                 torch.save({"model_state_dict": net.state_dict(), "epoch": epoch, "weights": tag,
                             **{f"val_{k}": val for k, val in v.items()}, **meta}, best_path)
         torch.save({"model": model.state_dict(), "ema": ema.state_dict(), "opt": opt.state_dict(),
-                    "sched": sched.state_dict(), "scaler": scaler.state_dict(), "epoch": epoch,
-                    "best": best, "history": history, "ema_steps": ema_steps}, state_path)
+                    "sched": sched.state_dict(), "scaler": scaler.state_dict(), "use_amp": use_amp,
+                    "epoch": epoch, "best": best, "history": history, "ema_steps": ema_steps}, state_path)
+        last_healthy_path = state_path
         pd.DataFrame(history).to_csv(os.path.join(out_dir, "history.csv"), index=False)
         print(f"epoch {epoch:3d} | {row['epoch_min']:.1f} min | loss {row['train_loss']:.4f} | selection IoU "
               f"raw {v_raw['iou']:.4f} ema {v_ema['iou']:.4f} | pos {v_ema['positive_frac']:.3f} | best {best}")
